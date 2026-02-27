@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dune Climber 4x4</title>
+    <style>
+        /* Center the game screen and make the background dark */
+        body { 
+            background-color: #222; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+            font-family: sans-serif;
+        }
+        /* Add a nice shadow to the canvas to make it look like an arcade screen */
+        canvas { 
+            background-color: #e3c16f; 
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8); 
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <script src="game.js"></script>
+</body>
+</html>
