@@ -7,18 +7,20 @@ const carSprite = new Image();
 carSprite.src = 'car.png'; // Your Figma sprite sheet
 
 const sandTexture = new Image();
-sandTexture.src = 'sand.jpg'; // Your photographic sand texture
+sandTexture.src = 'sand.jpg'; // Your sweeping dune photo
 
 const frameWidth = 128; 
 const frameHeight = 128;
-const drawScale = 0.5; 
+
+// INCREASED: This makes the car twice as big on the screen!
+const drawScale = 1.0; 
 
 // --- 2. GAME WORLD & STATE ---
 const WORLD_HEIGHT = 4000; 
 let currentPhase = "CLIMBING"; 
 let cameraY = 0; 
 
-// Array to hold our sticky sand traps (now visually hidden!)
+// Array to hold our sticky sand traps (visually hidden, but mathematically active!)
 let deepSandPits = [];
 
 // --- 3. THE PLAYER'S CAR ---
@@ -140,9 +142,18 @@ function draw() {
     ctx.save();
     ctx.translate(0, -cameraY); 
 
-    // 1. Draw the repeating Photographic Sand Texture
+    // 1. Draw the repeating Photographic Sand Texture (SCALED UP MASSIVELY)
     if (sandTexture.complete && sandTexture.naturalWidth !== 0) {
         let pattern = ctx.createPattern(sandTexture, 'repeat');
+        
+        // --- THE SCALE ILLUSION MAGIC ---
+        let matrix = new DOMMatrix();
+        // Scale the image up by 4x. This blurs the "grit" into smooth sand
+        // and turns small ripples into massive, mountain-sized dunes!
+        matrix.scaleSelf(4, 4); 
+        pattern.setTransform(matrix);
+        // -------------------------------
+        
         ctx.fillStyle = pattern;
         ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
     } else {
@@ -167,7 +178,7 @@ function draw() {
     ctx.fillRect(0, -4, canvas.width, 8); 
     ctx.fillRect(0, WORLD_HEIGHT - 4, canvas.width, 8); 
 
-    // 4. Draw the Car Sprite (No shadow!)
+    // 4. Draw the Car Sprite
     ctx.save();
     ctx.translate(car.x, car.y); 
 
