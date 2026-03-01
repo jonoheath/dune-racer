@@ -33,34 +33,33 @@ const WORLD_HEIGHT = 4000;
 let currentPhase = "CLIMBING"; 
 let cameraY = 0; 
 
-// NEW: Array to hold our sweeping, winding dunes
 let duneRidges = []; 
 
-// --- 3. THE PLAYER'S CAR ---
+// --- 3. THE PLAYER'S CAR (UPDATED FOR MOMENTUM) ---
 let car = {
     x: canvas.width / 2,     
     y: WORLD_HEIGHT - 100,   
     speed: 0,
-    maxSpeed: 4.5,           
-    acceleration: 0.12,      
-    friction: 0.05,          
+    maxSpeed: 6.5,           // Increased so you can hit 65!
+    acceleration: 0.15,      // Slightly punchier to build speed on the flats
+    friction: 0.04,          // Slightly lower base friction to coast better
     angle: -Math.PI / 2,     
     turnSpeed: 0.05,         
     width: frameWidth * drawScale,
     height: frameHeight * drawScale,
-    onRidge: false // Updated flag        
+    onRidge: false,
+    ridgeMessage: ""         // To give the player dynamic UI feedback
 };
 
-// --- 3.5 GENERATE ENVIRONMENT (THE SINE WAVES) ---
+// --- 3.5 GENERATE ENVIRONMENT ---
 function generateEnvironment() {
-    // We create a new massive ridge every 350 pixels down the map
     for (let y = 200; y < WORLD_HEIGHT - 200; y += 350) {
         duneRidges.push({
-            baseY: y, // Starting Y position
-            amplitude: Math.random() * 80 + 50,    // How dramatic the curves are
-            frequency: (Math.random() * 0.006) + 0.002, // How wide the curves are
-            slope: (Math.random() * 0.4) - 0.2,    // Makes them tilt diagonally
-            thickness: Math.random() * 30 + 40     // How wide the high-friction "hill" is
+            baseY: y, 
+            amplitude: Math.random() * 80 + 50,    
+            frequency: (Math.random() * 0.006) + 0.002, 
+            slope: (Math.random() * 0.4) - 0.2,    
+            thickness: Math.random() * 30 + 40     
         });
     }
 }
@@ -87,20 +86,35 @@ function update() {
     if (currentPhase === "FINISHED") return; 
 
     car.onRidge = false; 
+    car.ridgeMessage = "";
     let currentMaxSpeed = car.maxSpeed;
     let currentFriction = car.friction;
 
-    // --- NEW: SINE WAVE COLLISION MATH ---
+    // --- SINE WAVE MOMENTUM COLLISION ---
     for (let ridge of duneRidges) {
-        // Find exactly where the center of the ridge is at the car's current X position
         let ridgeY_at_carX = ridge.baseY + Math.sin(car.x * ridge.frequency) * ridge.amplitude + (car.x * ridge.slope);
 
-        // Check if the car is within the "thickness" zone of that ridge line
         if (Math.abs(car.y - ridgeY_at_carX) < ridge.thickness) {
             car.onRidge = true;
-            // HUGE penalty for trying to climb over the steep ridge!
-            currentMaxSpeed = car.maxSpeed * 0.25; 
-            currentFriction = car.friction * 6;    
+            let absoluteSpeed = Math.abs(car.speed); // Track how fast they hit the dune
+            
+            if (absoluteSpeed >= 5.5) {
+                // Tier 1: 55+ Speed. Carries momentum over easily.
+                car.ridgeMessage = "CARRYING SPEED!";
+                // Friction is higher than acceleration, so speed bleeds slowly
+                currentFriction = car.friction * 4.5; 
+            } 
+            else if (absoluteSpeed >= 4.5) {
+                // Tier 2: 45-54 Speed. Tougher grind.
+                car.ridgeMessage = "LOSING MOMENTUM...";
+                currentFriction = car.friction * 8; // Speed bleeds much faster
+            } 
+            else {
+                // Tier 3: Under 45 Speed. Bogged down!
+                car.ridgeMessage = "BOGGED DOWN!";
+                currentMaxSpeed = 2.0; // Hard cap the speed if they fail the climb
+                currentFriction = car.friction * 15; // Dead stop almost immediately
+            }
         }
     }
 
@@ -113,7 +127,14 @@ function update() {
         if (Math.abs(car.speed) < currentFriction) car.speed = 0;
     }
 
-    if (car.speed > currentMaxSpeed) car.speed = currentMaxSpeed;
+    // Apply speed caps. If they are over the cap (like hitting a bog), 
+    // let friction naturally pull them down rather than snapping instantly.
+    if (car.speed > currentMaxSpeed && !car.onRidge) car.speed = currentMaxSpeed;
+    if (car.onRidge && car.speed > currentMaxSpeed) {
+        // If they bog down, snap it to max speed so they feel the penalty
+        if (currentMaxSpeed === 2.0) car.speed = 2.0; 
+    }
+    
     if (car.speed < -currentMaxSpeed / 2) car.speed = -currentMaxSpeed / 2;
 
     if (Math.abs(car.speed) > 0.5) {
@@ -169,34 +190,31 @@ function draw() {
     ctx.fillStyle = pattern;
     ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
 
-    // --- NEW: 2. DRAW THE PROCEDURAL SINE WAVE RIDGES ---
+    // 2. DRAW THE PROCEDURAL SINE WAVE RIDGES
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     for (let ridge of duneRidges) {
-        // Step A: Draw the shadow side of the ridge (Offset slightly down)
         ctx.beginPath();
         for (let x = -50; x < canvas.width + 50; x += 20) {
             let y = ridge.baseY + Math.sin(x * ridge.frequency) * ridge.amplitude + (x * ridge.slope);
-            if (x === -50) ctx.moveTo(x, y + 10); // Offset down
+            if (x === -50) ctx.moveTo(x, y + 10); 
             else ctx.lineTo(x, y + 10);
         }
-        ctx.strokeStyle = "rgba(100, 60, 20, 0.4)"; // Dark shadow
-        ctx.lineWidth = ridge.thickness * 1.8;      // Thicker to blend out
+        ctx.strokeStyle = "rgba(100, 60, 20, 0.4)"; 
+        ctx.lineWidth = ridge.thickness * 1.8;      
         ctx.stroke();
 
-        // Step B: Draw the sunlit peak of the ridge
         ctx.beginPath();
         for (let x = -50; x < canvas.width + 50; x += 20) {
             let y = ridge.baseY + Math.sin(x * ridge.frequency) * ridge.amplitude + (x * ridge.slope);
-            if (x === -50) ctx.moveTo(x, y - 5); // Offset up
+            if (x === -50) ctx.moveTo(x, y - 5); 
             else ctx.lineTo(x, y - 5);
         }
-        ctx.strokeStyle = "rgba(255, 230, 160, 0.6)"; // Bright highlight
+        ctx.strokeStyle = "rgba(255, 230, 160, 0.6)"; 
         ctx.lineWidth = ridge.thickness;
         ctx.stroke();
     }
-    // ----------------------------------------------------
 
     // 3. Global Lighting Gradient
     let lightingGradient = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT);
@@ -242,8 +260,12 @@ function draw() {
     ctx.fillText("SPEED: " + Math.round(car.speed * 10), 20, 70);
     
     if (car.onRidge) {
-        ctx.fillStyle = "#ff6b6b";
-        ctx.fillText("STEEP RIDGE!", 20, 100);
+        // Change text color based on how well they are doing!
+        if (car.ridgeMessage === "BOGGED DOWN!") ctx.fillStyle = "#ff6b6b"; // Red
+        else if (car.ridgeMessage === "LOSING MOMENTUM...") ctx.fillStyle = "#ffc86b"; // Orange
+        else ctx.fillStyle = "#8cff6b"; // Green for carrying speed
+
+        ctx.fillText(car.ridgeMessage, 20, 100);
     }
 
     ctx.shadowBlur = 0; 
