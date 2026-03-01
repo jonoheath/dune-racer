@@ -6,22 +6,47 @@ const ctx = canvas.getContext("2d");
 const carSprite = new Image();
 carSprite.src = 'car.png'; // Your Figma sprite sheet
 
-const sandTexture = new Image();
-sandTexture.src = 'sand.jpg'; // Your sweeping dune photo
-
 const frameWidth = 128; 
 const frameHeight = 128;
-
-// INCREASED: This makes the car twice as big on the screen!
 const drawScale = 1.0; 
+
+// --- 1.6 GENERATE PIXEL ART SAND TILE ---
+// Instead of an external image, we generate a 32x32 retro pixel pattern in code!
+const sandTile = document.createElement('canvas');
+sandTile.width = 32;
+sandTile.height = 32;
+const sCtx = sandTile.getContext('2d');
+
+// Fill base sand color
+sCtx.fillStyle = "#e3c16f";
+sCtx.fillRect(0, 0, 32, 32);
+
+// Draw chunky pixel-art dune ridges and noise
+for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+        let noise = Math.random();
+        // Create a wavy pattern math equation
+        let wave = Math.sin(x * 0.3) * 3 + y; 
+        
+        if (wave % 16 < 4) {
+            // Dune Highlight (Sunlit edge)
+            if (noise > 0.4) { sCtx.fillStyle = "#f0d494"; sCtx.fillRect(x, y, 1, 1); }
+        } else if (wave % 16 > 12) {
+            // Dune Shadow (Dark edge)
+            if (noise > 0.4) { sCtx.fillStyle = "#c9a657"; sCtx.fillRect(x, y, 1, 1); }
+        } else {
+            // General sand texture noise
+            if (noise > 0.85) { sCtx.fillStyle = "#d6b463"; sCtx.fillRect(x, y, 1, 1); }
+        }
+    }
+}
 
 // --- 2. GAME WORLD & STATE ---
 const WORLD_HEIGHT = 4000; 
 let currentPhase = "CLIMBING"; 
 let cameraY = 0; 
 
-// Array to hold our sticky sand traps (visually hidden, but mathematically active!)
-let deepSandPits = [];
+let deepSandPits = []; // Invisible friction zones
 
 // --- 3. THE PLAYER'S CAR ---
 let car = {
@@ -75,21 +100,20 @@ function update() {
     let currentMaxSpeed = car.maxSpeed;
     let currentFriction = car.friction;
 
-    // --- DEEP SAND COLLISION (Math only, no visuals) ---
+    // Deep Sand Math (No visuals)
     for (let pit of deepSandPits) {
         let dx = car.x - pit.x;
         let dy = car.y - pit.y;
-        let distance = Math.sqrt(dx*dx + dy*dy);
-        if (distance < pit.radius * 0.8) {
+        if (Math.sqrt(dx*dx + dy*dy) < pit.radius * 0.8) {
             car.inDeepSand = true;
             currentMaxSpeed = car.maxSpeed * 0.35; 
             currentFriction = car.friction * 5;    
         }
     }
 
-    // --- DRIVING MATH ---
-    if (keys.ArrowUp) { car.speed += car.acceleration; } 
-    else if (keys.ArrowDown) { car.speed -= car.acceleration; } 
+    // Driving Math
+    if (keys.ArrowUp) car.speed += car.acceleration;
+    else if (keys.ArrowDown) car.speed -= car.acceleration;
     else {
         if (car.speed > 0) car.speed -= currentFriction;
         if (car.speed < 0) car.speed += currentFriction;
@@ -111,7 +135,7 @@ function update() {
     if (car.x < 20) car.x = 20;
     if (car.x > canvas.width - 20) car.x = canvas.width - 20;
 
-    // --- PHASE LOGIC & GRAVITY ---
+    // Phase Logic
     if (currentPhase === "CLIMBING") {
         car.y += 1.5; 
         if (car.y <= 0) {
@@ -129,7 +153,7 @@ function update() {
         }
     }
 
-    // --- CAMERA ---
+    // Camera
     cameraY = car.y - (canvas.height / 2);
     if (cameraY < -50) cameraY = -50;
     if (cameraY > WORLD_HEIGHT - canvas.height + 50) cameraY = WORLD_HEIGHT - canvas.height + 50;
@@ -137,38 +161,33 @@ function update() {
 
 // --- 6. THE ART (DRAW) ---
 function draw() {
+    // CRUCIAL FOR PIXEL ART: This stops the browser from blurring scaled images!
+    ctx.imageSmoothingEnabled = false; 
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
     ctx.translate(0, -cameraY); 
 
-    // 1. Draw the repeating Photographic Sand Texture (SCALED UP MASSIVELY)
-    if (sandTexture.complete && sandTexture.naturalWidth !== 0) {
-        let pattern = ctx.createPattern(sandTexture, 'repeat');
-        
-        // --- THE SCALE ILLUSION MAGIC ---
-        let matrix = new DOMMatrix();
-        // Scale the image up by 4x. This blurs the "grit" into smooth sand
-        // and turns small ripples into massive, mountain-sized dunes!
-        matrix.scaleSelf(4, 4); 
-        pattern.setTransform(matrix);
-        // -------------------------------
-        
-        ctx.fillStyle = pattern;
-        ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
-    } else {
-        ctx.fillStyle = "#e3c16f";
-        ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
-    }
+    // 1. Draw the generated Pixel Art Sand Pattern
+    let pattern = ctx.createPattern(sandTile, 'repeat');
+    
+    let matrix = new DOMMatrix();
+    // Scale up the tiny 32x32 pattern by 6x so the pixels look nice and chunky
+    matrix.scaleSelf(6, 6); 
+    pattern.setTransform(matrix);
+    
+    ctx.fillStyle = pattern;
+    ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
 
     // 2. Add Global Lighting (The Hill Illusion overlay)
     let lightingGradient = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT);
     if (currentPhase === "CLIMBING") {
-        lightingGradient.addColorStop(0, "rgba(255, 255, 255, 0.15)"); 
-        lightingGradient.addColorStop(1, "rgba(0, 0, 0, 0.65)");       
+        lightingGradient.addColorStop(0, "rgba(255, 255, 255, 0.1)"); 
+        lightingGradient.addColorStop(1, "rgba(0, 0, 0, 0.4)");       
     } else {
-        lightingGradient.addColorStop(0, "rgba(0, 0, 0, 0.2)");  
-        lightingGradient.addColorStop(1, "rgba(0, 0, 0, 0.85)"); 
+        lightingGradient.addColorStop(0, "rgba(0, 0, 0, 0.1)");  
+        lightingGradient.addColorStop(1, "rgba(0, 0, 0, 0.6)"); 
     }
     ctx.fillStyle = lightingGradient;
     ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
@@ -193,10 +212,9 @@ function draw() {
     );
     ctx.restore();
     
-    // --- CAMERA MAGIC ENDS ---
     ctx.restore(); 
 
-    // --- UI DRAWING (Glued to screen) ---
+    // --- UI DRAWING ---
     ctx.fillStyle = "white"; 
     ctx.font = "bold 20px Arial";
     ctx.shadowColor = "black";
@@ -205,7 +223,6 @@ function draw() {
     ctx.fillText("PHASE: " + currentPhase, 20, 40);
     ctx.fillText("SPEED: " + Math.round(car.speed * 10), 20, 70);
     
-    // This warning will still pop up when you hit an invisible friction trap!
     if (car.inDeepSand) {
         ctx.fillStyle = "#ff6b6b";
         ctx.fillText("BOGGED DOWN!", 20, 100);
