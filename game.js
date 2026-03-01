@@ -4,40 +4,27 @@ const ctx = canvas.getContext("2d");
 
 // --- 1.5 LOAD ASSETS ---
 const carSprite = new Image();
-carSprite.src = 'car.png'; // Your Figma sprite sheet
+carSprite.src = 'car.png'; 
 
 const frameWidth = 128; 
 const frameHeight = 128;
 const drawScale = 1.0; 
 
 // --- 1.6 GENERATE PIXEL ART SAND TILE ---
-// Instead of an external image, we generate a 32x32 retro pixel pattern in code!
 const sandTile = document.createElement('canvas');
 sandTile.width = 32;
 sandTile.height = 32;
 const sCtx = sandTile.getContext('2d');
 
-// Fill base sand color
 sCtx.fillStyle = "#e3c16f";
 sCtx.fillRect(0, 0, 32, 32);
-
-// Draw chunky pixel-art dune ridges and noise
 for (let y = 0; y < 32; y++) {
     for (let x = 0; x < 32; x++) {
         let noise = Math.random();
-        // Create a wavy pattern math equation
         let wave = Math.sin(x * 0.3) * 3 + y; 
-        
-        if (wave % 16 < 4) {
-            // Dune Highlight (Sunlit edge)
-            if (noise > 0.4) { sCtx.fillStyle = "#f0d494"; sCtx.fillRect(x, y, 1, 1); }
-        } else if (wave % 16 > 12) {
-            // Dune Shadow (Dark edge)
-            if (noise > 0.4) { sCtx.fillStyle = "#c9a657"; sCtx.fillRect(x, y, 1, 1); }
-        } else {
-            // General sand texture noise
-            if (noise > 0.85) { sCtx.fillStyle = "#d6b463"; sCtx.fillRect(x, y, 1, 1); }
-        }
+        if (wave % 16 < 4 && noise > 0.4) { sCtx.fillStyle = "#f0d494"; sCtx.fillRect(x, y, 1, 1); }
+        else if (wave % 16 > 12 && noise > 0.4) { sCtx.fillStyle = "#c9a657"; sCtx.fillRect(x, y, 1, 1); }
+        else if (noise > 0.85) { sCtx.fillStyle = "#d6b463"; sCtx.fillRect(x, y, 1, 1); }
     }
 }
 
@@ -46,7 +33,8 @@ const WORLD_HEIGHT = 4000;
 let currentPhase = "CLIMBING"; 
 let cameraY = 0; 
 
-let deepSandPits = []; // Invisible friction zones
+// NEW: Array to hold our sweeping, winding dunes
+let duneRidges = []; 
 
 // --- 3. THE PLAYER'S CAR ---
 let car = {
@@ -60,16 +48,19 @@ let car = {
     turnSpeed: 0.05,         
     width: frameWidth * drawScale,
     height: frameHeight * drawScale,
-    inDeepSand: false        
+    onRidge: false // Updated flag        
 };
 
-// --- 3.5 GENERATE ENVIRONMENT ---
+// --- 3.5 GENERATE ENVIRONMENT (THE SINE WAVES) ---
 function generateEnvironment() {
-    for (let i = 0; i < 35; i++) {
-        deepSandPits.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * (WORLD_HEIGHT - 400) + 200, 
-            radius: Math.random() * 50 + 40 
+    // We create a new massive ridge every 350 pixels down the map
+    for (let y = 200; y < WORLD_HEIGHT - 200; y += 350) {
+        duneRidges.push({
+            baseY: y, // Starting Y position
+            amplitude: Math.random() * 80 + 50,    // How dramatic the curves are
+            frequency: (Math.random() * 0.006) + 0.002, // How wide the curves are
+            slope: (Math.random() * 0.4) - 0.2,    // Makes them tilt diagonally
+            thickness: Math.random() * 30 + 40     // How wide the high-friction "hill" is
         });
     }
 }
@@ -85,7 +76,6 @@ window.addEventListener("keyup", function(e) {
     if (keys.hasOwnProperty(e.code)) { keys[e.code] = false; }
 });
 
-// --- 4.5 SPRITE HELPER ---
 function getSpriteIndex(angle) {
     let normalizedAngle = angle + (Math.PI * 4); 
     let slice = Math.PI / 4; 
@@ -96,18 +86,21 @@ function getSpriteIndex(angle) {
 function update() {
     if (currentPhase === "FINISHED") return; 
 
-    car.inDeepSand = false; 
+    car.onRidge = false; 
     let currentMaxSpeed = car.maxSpeed;
     let currentFriction = car.friction;
 
-    // Deep Sand Math (No visuals)
-    for (let pit of deepSandPits) {
-        let dx = car.x - pit.x;
-        let dy = car.y - pit.y;
-        if (Math.sqrt(dx*dx + dy*dy) < pit.radius * 0.8) {
-            car.inDeepSand = true;
-            currentMaxSpeed = car.maxSpeed * 0.35; 
-            currentFriction = car.friction * 5;    
+    // --- NEW: SINE WAVE COLLISION MATH ---
+    for (let ridge of duneRidges) {
+        // Find exactly where the center of the ridge is at the car's current X position
+        let ridgeY_at_carX = ridge.baseY + Math.sin(car.x * ridge.frequency) * ridge.amplitude + (car.x * ridge.slope);
+
+        // Check if the car is within the "thickness" zone of that ridge line
+        if (Math.abs(car.y - ridgeY_at_carX) < ridge.thickness) {
+            car.onRidge = true;
+            // HUGE penalty for trying to climb over the steep ridge!
+            currentMaxSpeed = car.maxSpeed * 0.25; 
+            currentFriction = car.friction * 6;    
         }
     }
 
@@ -161,7 +154,6 @@ function update() {
 
 // --- 6. THE ART (DRAW) ---
 function draw() {
-    // CRUCIAL FOR PIXEL ART: Stops the browser from blurring!
     ctx.imageSmoothingEnabled = false; 
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -169,16 +161,44 @@ function draw() {
     ctx.save();
     ctx.translate(0, -cameraY); 
 
-    // 1. Draw the generated Pixel Art Sand Pattern
+    // 1. Draw Base Sand
     let pattern = ctx.createPattern(sandTile, 'repeat');
     let matrix = new DOMMatrix();
     matrix.scaleSelf(6, 6); 
     pattern.setTransform(matrix);
-    
     ctx.fillStyle = pattern;
     ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
 
-    // 2. Add Global Lighting (The Hill Illusion overlay)
+    // --- NEW: 2. DRAW THE PROCEDURAL SINE WAVE RIDGES ---
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (let ridge of duneRidges) {
+        // Step A: Draw the shadow side of the ridge (Offset slightly down)
+        ctx.beginPath();
+        for (let x = -50; x < canvas.width + 50; x += 20) {
+            let y = ridge.baseY + Math.sin(x * ridge.frequency) * ridge.amplitude + (x * ridge.slope);
+            if (x === -50) ctx.moveTo(x, y + 10); // Offset down
+            else ctx.lineTo(x, y + 10);
+        }
+        ctx.strokeStyle = "rgba(100, 60, 20, 0.4)"; // Dark shadow
+        ctx.lineWidth = ridge.thickness * 1.8;      // Thicker to blend out
+        ctx.stroke();
+
+        // Step B: Draw the sunlit peak of the ridge
+        ctx.beginPath();
+        for (let x = -50; x < canvas.width + 50; x += 20) {
+            let y = ridge.baseY + Math.sin(x * ridge.frequency) * ridge.amplitude + (x * ridge.slope);
+            if (x === -50) ctx.moveTo(x, y - 5); // Offset up
+            else ctx.lineTo(x, y - 5);
+        }
+        ctx.strokeStyle = "rgba(255, 230, 160, 0.6)"; // Bright highlight
+        ctx.lineWidth = ridge.thickness;
+        ctx.stroke();
+    }
+    // ----------------------------------------------------
+
+    // 3. Global Lighting Gradient
     let lightingGradient = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT);
     if (currentPhase === "CLIMBING") {
         lightingGradient.addColorStop(0, "rgba(255, 255, 255, 0.1)"); 
@@ -190,38 +210,12 @@ function draw() {
     ctx.fillStyle = lightingGradient;
     ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
 
-    // --- NEW: 3. Draw Deep Sand Pits (Chunky Pixel Style) ---
-    ctx.fillStyle = "rgba(100, 70, 30, 0.6)"; // Dark, muddy brown color
-    const chunkSize = 12; // Matches the chunky feel of the scaled background
-    
-    for (let pit of deepSandPits) {
-        ctx.save();
-        ctx.translate(pit.x, pit.y);
-        ctx.globalCompositeOperation = "multiply"; // Blends the dark mud into the sand texture
-        
-        // Calculate how many chunky blocks fit into this pit's radius
-        let wChunks = Math.floor(pit.radius / chunkSize);
-        let hChunks = Math.floor((pit.radius * 0.8) / chunkSize); // Squashed Y-axis for isometric feel
-        
-        // Draw the pixelated oval
-        for (let x = -wChunks; x <= wChunks; x++) {
-            for (let y = -hChunks; y <= hChunks; y++) {
-                // If the block is inside the mathematical ellipse, draw it!
-                if ((x * x) / (wChunks * wChunks) + (y * y) / (hChunks * hChunks) <= 1) {
-                    ctx.fillRect(x * chunkSize, y * chunkSize, chunkSize, chunkSize);
-                }
-            }
-        }
-        ctx.restore();
-    }
-    // --------------------------------------------------------
-
-    // 4. Draw Peak and Base Finish Lines
+    // 4. Peak/Base Lines
     ctx.fillStyle = "rgba(0,0,0,0.5)";
     ctx.fillRect(0, -4, canvas.width, 8); 
     ctx.fillRect(0, WORLD_HEIGHT - 4, canvas.width, 8); 
 
-    // 5. Draw the Car Sprite
+    // 5. Draw Car
     ctx.save();
     ctx.translate(car.x, car.y); 
 
@@ -247,9 +241,9 @@ function draw() {
     ctx.fillText("PHASE: " + currentPhase, 20, 40);
     ctx.fillText("SPEED: " + Math.round(car.speed * 10), 20, 70);
     
-    if (car.inDeepSand) {
+    if (car.onRidge) {
         ctx.fillStyle = "#ff6b6b";
-        ctx.fillText("BOGGED DOWN!", 20, 100);
+        ctx.fillText("STEEP RIDGE!", 20, 100);
     }
 
     ctx.shadowBlur = 0; 
@@ -258,16 +252,14 @@ function draw() {
         ctx.fillStyle = "white";
         ctx.font = "bold 50px Arial";
         ctx.textAlign = "center";
-        
         ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
         ctx.fillStyle = "white";
         ctx.fillText("YOU SURVIVED!", canvas.width / 2, canvas.height / 2);
     }
 }
 
-// --- 7. THE GAME LOOP ---
+// --- 7. GAME LOOP ---
 function gameLoop() {
     update();
     draw();
