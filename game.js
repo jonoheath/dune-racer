@@ -6,6 +6,18 @@ const ctx = canvas.getContext("2d");
 const carSprite = new Image();
 carSprite.src = 'car.png'; 
 
+const boggedCarSprite = new Image();
+boggedCarSprite.src = 'bogged_car.png'; 
+
+const surferSprite = new Image();
+surferSprite.src = 'surfer.png'; 
+
+const rockSprite = new Image();
+rockSprite.src = 'rock.png'; 
+
+const personSprite = new Image();
+personSprite.src = 'person.png'; 
+
 const frameWidth = 128; 
 const frameHeight = 128;
 const drawScale = 1.0; 
@@ -43,12 +55,10 @@ let startTime = Date.now();
 let finalTime = 0;
 let leaderboard = [];
 
-// New Name Entry Variables
 let isEnteringName = false;
-let playerName = [65, 65, 65]; // ASCII codes for [A, A, A]
-let nameIndex = 0; // Which letter are we currently changing? (0, 1, or 2)
+let playerName = [65, 65, 65]; 
+let nameIndex = 0; 
 
-// Load saved times (Using V2 key to avoid crashes with old data)
 try {
     let saved = localStorage.getItem("duneLeaderboardV2");
     if (saved) leaderboard = JSON.parse(saved);
@@ -64,8 +74,8 @@ function formatTime(ms) {
 
 function saveScore(name, time) {
     leaderboard.push({ name: name, time: time });
-    leaderboard.sort((a, b) => a.time - b.time); // Sort fastest to slowest
-    leaderboard = leaderboard.slice(0, 5); // Keep only top 5
+    leaderboard.sort((a, b) => a.time - b.time); 
+    leaderboard = leaderboard.slice(0, 5); 
     try {
         localStorage.setItem("duneLeaderboardV2", JSON.stringify(leaderboard));
     } catch(e) {}
@@ -108,13 +118,11 @@ function generateEnvironment(phase) {
         });
     }
 
-    let carColors = ["#d95763", "#597dce", "#99e550", "#ffffff"];
     for (let i = 0; i < 15; i++) {
-        let xPos = Math.random() > 0.5 ? Math.random() * 100 : canvas.width - 40 - Math.random() * 100;
+        let xPos = Math.random() > 0.5 ? Math.random() * 100 : canvas.width - 70 - Math.random() * 100;
         spectators.push({
             x: xPos,
             y: Math.random() * (WORLD_HEIGHT - 400) + 200, 
-            color: carColors[Math.floor(Math.random() * carColors.length)],
             offset: Math.random() * 1000 
         });
     }
@@ -136,7 +144,6 @@ generateEnvironment("CLIMBING");
 const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
 
 window.addEventListener("keydown", function(e) {
-    // --- ARCADE NAME ENTRY LOGIC ---
     if (isEnteringName) {
         if (e.code === "ArrowUp") {
             playerName[nameIndex] = playerName[nameIndex] >= 90 ? 65 : playerName[nameIndex] + 1;
@@ -147,18 +154,15 @@ window.addEventListener("keydown", function(e) {
         } else if (e.code === "ArrowLeft") {
             if (nameIndex > 0) nameIndex--;
         } else if (e.code === "Enter") {
-            // Combine ASCII codes into a string and save!
             let finalName = String.fromCharCode(playerName[0], playerName[1], playerName[2]);
             saveScore(finalName, finalTime);
-            isEnteringName = false; // Move to the leaderboard view
+            isEnteringName = false; 
         }
-        return; // Prevent standard car/game inputs while typing
+        return; 
     }
 
-    // --- STANDARD GAME LOGIC ---
     if (keys.hasOwnProperty(e.code)) { keys[e.code] = true; e.preventDefault(); }
     
-    // RESTART LOGIC (Only works when NOT entering a name)
     if (e.code === "KeyR" && currentPhase === "FINISHED" && !isEnteringName) {
         resetGame();
     }
@@ -223,11 +227,11 @@ function update() {
     }
 
     for (let spec of spectators) {
-        let dx = car.x - (spec.x + 15); 
-        let dy = car.y - (spec.y + 20);
-        if (Math.sqrt(dx*dx + dy*dy) < 30) {
+        let dx = car.x - (spec.x + 32); 
+        let dy = car.y - (spec.y + 24);
+        if (Math.sqrt(dx*dx + dy*dy) < 35) {
             car.speed = -1; 
-            car.uiMessage = "WATCH THE CROWD!";
+            car.uiMessage = "WATCH THE BOGGED CARS!";
         }
     }
 
@@ -278,7 +282,6 @@ function update() {
     if (car.x < 20) car.x = 20;
     if (car.x > canvas.width - 20) car.x = canvas.width - 20;
 
-    // --- PHASE TRANSITIONS ---
     if (currentPhase === "CLIMBING") {
         if (car.y <= 0) {
             currentPhase = "DESCENDING";
@@ -292,11 +295,9 @@ function update() {
         if (car.y >= WORLD_HEIGHT) {
             currentPhase = "FINISHED";
             car.speed = 0;
-            
-            // Trigger Name Entry!
             finalTime = Date.now() - startTime;
             isEnteringName = true;
-            playerName = [65, 65, 65]; // Reset to AAA
+            playerName = [65, 65, 65]; 
             nameIndex = 0;
         }
     }
@@ -313,6 +314,7 @@ function draw() {
     ctx.save();
     ctx.translate(0, -cameraY); 
 
+    // 1. Base Sand
     let pattern = ctx.createPattern(sandTile, 'repeat');
     let matrix = new DOMMatrix();
     matrix.scaleSelf(6, 6); 
@@ -320,6 +322,7 @@ function draw() {
     ctx.fillStyle = pattern;
     ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
 
+    // 2. Bog Blobs
     ctx.fillStyle = "rgba(100, 70, 30, 0.6)"; 
     const chunkSize = 12; 
     for (let blob of bogBlobs) {
@@ -338,42 +341,39 @@ function draw() {
         ctx.restore();
     }
 
-    ctx.fillStyle = "#555"; 
+    // 3. Custom Rock Sprites
     for (let rock of rocks) {
-        ctx.fillRect(rock.x - rock.size, rock.y - rock.size, rock.size * 2, rock.size * 2);
-        ctx.fillStyle = "#888"; 
-        ctx.fillRect(rock.x - rock.size, rock.y - rock.size, rock.size, rock.size);
-        ctx.fillStyle = "#555"; 
+        if (rockSprite.complete) {
+            ctx.drawImage(rockSprite, rock.x - rock.size, rock.y - rock.size, rock.size * 2, rock.size * 2);
+        }
     }
 
+    // 4. Custom Bogged Cars & Jumping People
     for (let spec of spectators) {
-        ctx.fillStyle = spec.color;
-        ctx.fillRect(spec.x, spec.y, 24, 40); 
-        ctx.fillStyle = "#222"; 
-        ctx.fillRect(spec.x + 4, spec.y + 8, 16, 12);
+        if (boggedCarSprite.complete) {
+            ctx.drawImage(boggedCarSprite, spec.x, spec.y, 64, 48);
+        }
         
         let jumpHeight = Math.abs(Math.sin((Date.now() + spec.offset) / 150)) * 10;
-        let personX = spec.x < canvas.width / 2 ? spec.x + 30 : spec.x - 15;
+        let personX = spec.x < canvas.width / 2 ? spec.x + 65 : spec.x - 15;
         
-        ctx.fillStyle = "#ffffff"; 
-        ctx.fillRect(personX, spec.y + 15 - jumpHeight, 10, 10);
-        ctx.fillStyle = "#ffccaa"; 
-        ctx.fillRect(personX + 2, spec.y + 7 - jumpHeight, 6, 6);
+        if (personSprite.complete) {
+            ctx.drawImage(personSprite, personX, spec.y + 16 - jumpHeight, 32, 32);
+        }
     }
 
+    // 5. Custom Surfer Sprites (Rotating!)
     for (let surfer of surfers) {
         ctx.save();
         ctx.translate(surfer.x, surfer.y);
         ctx.rotate(Math.sin(surfer.carvePhase) * 0.5); 
-        ctx.fillStyle = "#ffcc00"; 
-        ctx.fillRect(-8, -20, 16, 40);
-        ctx.fillStyle = "#222"; 
-        ctx.fillRect(-6, -6, 12, 12);
-        ctx.fillStyle = "#ffccaa"; 
-        ctx.fillRect(-4, -12, 8, 8);
+        if (surferSprite.complete) {
+            ctx.drawImage(surferSprite, -32, -32, 64, 64);
+        }
         ctx.restore();
     }
 
+    // 6. Global Lighting Gradient
     let lightingGradient = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT);
     if (currentPhase === "CLIMBING") {
         lightingGradient.addColorStop(0, "rgba(255, 255, 255, 0.1)"); 
@@ -385,6 +385,7 @@ function draw() {
     ctx.fillStyle = lightingGradient;
     ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
 
+    // 7. Player Car Sprite
     ctx.save();
     ctx.translate(car.x, car.y); 
     let frameIndex = getSpriteIndex(car.angle);
@@ -411,7 +412,7 @@ function draw() {
     ctx.fillText("SPEED: " + Math.round(car.speed * 10), 20, 100);
     
     if (car.uiMessage !== "") {
-        if (car.uiMessage === "BOGGED DOWN!" || car.uiMessage === "CRASHED INTO ROCK!" || car.uiMessage === "WATCH THE CROWD!") {
+        if (car.uiMessage === "BOGGED DOWN!" || car.uiMessage === "CRASHED INTO ROCK!" || car.uiMessage === "WATCH THE BOGGED CARS!") {
             ctx.fillStyle = "#ff6b6b"; 
         } else if (car.uiMessage === "DODGE THE SURFERS!" || car.uiMessage === "LOSING MOMENTUM...") {
             ctx.fillStyle = "#ffc86b"; 
@@ -431,7 +432,6 @@ function draw() {
         ctx.textAlign = "center";
         
         if (isEnteringName) {
-            // THE NEW NAME ENTRY SCREEN
             ctx.fillStyle = "white";
             ctx.font = "bold 40px Arial";
             ctx.fillText("NEW HIGH SCORE!", canvas.width / 2, canvas.height / 2 - 100);
@@ -440,17 +440,13 @@ function draw() {
             ctx.font = "bold 25px Arial";
             ctx.fillText("YOUR TIME: " + formatTime(finalTime), canvas.width / 2, canvas.height / 2 - 40);
 
-            // Draw the 3 letters
             ctx.font = "bold 60px monospace";
             for (let i = 0; i < 3; i++) {
-                // Highlight the active letter in yellow, others in white
                 ctx.fillStyle = (i === nameIndex) ? "#ffcc00" : "white";
                 let letter = String.fromCharCode(playerName[i]);
-                // Space them out slightly
                 let letterX = (canvas.width / 2) - 60 + (i * 60);
                 ctx.fillText(letter, letterX, canvas.height / 2 + 50);
                 
-                // Draw a little cursor triangle under the active letter
                 if (i === nameIndex) {
                     let pulse = Math.abs(Math.sin(Date.now() / 200)) * 10;
                     ctx.fillText("ˆ", letterX, canvas.height / 2 + 80 + pulse);
@@ -462,14 +458,12 @@ function draw() {
             ctx.fillText("USE ARROWS TO EDIT. PRESS ENTER TO SAVE.", canvas.width / 2, canvas.height / 2 + 150);
 
         } else {
-            // THE LEADERBOARD SCREEN
             ctx.fillStyle = "white";
             ctx.font = "bold 50px Arial";
             ctx.fillText("LEADERBOARD", canvas.width / 2, canvas.height / 2 - 120);
             
             ctx.font = "bold 25px monospace";
             for (let i = 0; i < leaderboard.length; i++) {
-                // Highlight your newly entered score in Gold!
                 ctx.fillStyle = (leaderboard[i].time === finalTime) ? "#ffcc00" : "white";
                 let rank = (i + 1).toString().padEnd(3, ' ');
                 let name = leaderboard[i].name;
