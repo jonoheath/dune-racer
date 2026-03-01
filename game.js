@@ -161,7 +161,7 @@ function update() {
 
 // --- 6. THE ART (DRAW) ---
 function draw() {
-    // CRUCIAL FOR PIXEL ART: This stops the browser from blurring scaled images!
+    // CRUCIAL FOR PIXEL ART: Stops the browser from blurring!
     ctx.imageSmoothingEnabled = false; 
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -171,9 +171,7 @@ function draw() {
 
     // 1. Draw the generated Pixel Art Sand Pattern
     let pattern = ctx.createPattern(sandTile, 'repeat');
-    
     let matrix = new DOMMatrix();
-    // Scale up the tiny 32x32 pattern by 6x so the pixels look nice and chunky
     matrix.scaleSelf(6, 6); 
     pattern.setTransform(matrix);
     
@@ -192,12 +190,38 @@ function draw() {
     ctx.fillStyle = lightingGradient;
     ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
 
-    // 3. Draw Peak and Base Finish Lines
+    // --- NEW: 3. Draw Deep Sand Pits (Chunky Pixel Style) ---
+    ctx.fillStyle = "rgba(100, 70, 30, 0.6)"; // Dark, muddy brown color
+    const chunkSize = 12; // Matches the chunky feel of the scaled background
+    
+    for (let pit of deepSandPits) {
+        ctx.save();
+        ctx.translate(pit.x, pit.y);
+        ctx.globalCompositeOperation = "multiply"; // Blends the dark mud into the sand texture
+        
+        // Calculate how many chunky blocks fit into this pit's radius
+        let wChunks = Math.floor(pit.radius / chunkSize);
+        let hChunks = Math.floor((pit.radius * 0.8) / chunkSize); // Squashed Y-axis for isometric feel
+        
+        // Draw the pixelated oval
+        for (let x = -wChunks; x <= wChunks; x++) {
+            for (let y = -hChunks; y <= hChunks; y++) {
+                // If the block is inside the mathematical ellipse, draw it!
+                if ((x * x) / (wChunks * wChunks) + (y * y) / (hChunks * hChunks) <= 1) {
+                    ctx.fillRect(x * chunkSize, y * chunkSize, chunkSize, chunkSize);
+                }
+            }
+        }
+        ctx.restore();
+    }
+    // --------------------------------------------------------
+
+    // 4. Draw Peak and Base Finish Lines
     ctx.fillStyle = "rgba(0,0,0,0.5)";
     ctx.fillRect(0, -4, canvas.width, 8); 
     ctx.fillRect(0, WORLD_HEIGHT - 4, canvas.width, 8); 
 
-    // 4. Draw the Car Sprite
+    // 5. Draw the Car Sprite
     ctx.save();
     ctx.translate(car.x, car.y); 
 
