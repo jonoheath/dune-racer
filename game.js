@@ -2,9 +2,12 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// --- 1.5 LOAD ASSETS (YOUR FIGMA EXPORT) ---
+// --- 1.5 LOAD ASSETS ---
 const carSprite = new Image();
-carSprite.src = 'car.png'; 
+carSprite.src = 'car.png'; // Your Figma sprite sheet
+
+const sandTexture = new Image();
+sandTexture.src = 'sand.jpg'; // Your new photographic sand texture
 
 const frameWidth = 128; 
 const frameHeight = 128;
@@ -15,19 +18,18 @@ const WORLD_HEIGHT = 4000;
 let currentPhase = "CLIMBING"; 
 let cameraY = 0; 
 
-// Arrays for our environment
+// Array to hold our sticky sand traps
 let deepSandPits = [];
-let sandRipples = []; // New: sweeping curves for terrain texture
 
 // --- 3. THE PLAYER'S CAR ---
 let car = {
     x: canvas.width / 2,     
-    y: WORLD_HEIGHT - 100,   
+    y: WORLD_HEIGHT - 100,   // Start at the bottom of the world
     speed: 0,
     maxSpeed: 4.5,           
     acceleration: 0.12,      
     friction: 0.05,          
-    angle: -Math.PI / 2,     
+    angle: -Math.PI / 2,     // Start facing North
     turnSpeed: 0.05,         
     width: frameWidth * drawScale,
     height: frameHeight * drawScale,
@@ -36,7 +38,7 @@ let car = {
 
 // --- 3.5 GENERATE ENVIRONMENT ---
 function generateEnvironment() {
-    // 1. Generate Deep Sand Craters
+    // Generate 35 Deep Sand Craters randomly across the massive dune
     for (let i = 0; i < 35; i++) {
         deepSandPits.push({
             x: Math.random() * canvas.width,
@@ -44,18 +46,8 @@ function generateEnvironment() {
             radius: Math.random() * 50 + 40 
         });
     }
-    
-    // 2. Generate Wind Ripples (Fake 3D contours)
-    for (let i = 0; i < 150; i++) {
-        sandRipples.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * WORLD_HEIGHT,
-            width: Math.random() * 200 + 100,
-            curveOffset: (Math.random() - 0.5) * 60 // How wavy the line is
-        });
-    }
 }
-// Run once on load
+// Run this once when the game loads!
 generateEnvironment();
 
 // --- 4. KEYBOARD CONTROLS ---
@@ -88,7 +80,7 @@ function update() {
         let dx = car.x - pit.x;
         let dy = car.y - pit.y;
         let distance = Math.sqrt(dx*dx + dy*dy);
-        // We use an elliptical hit box to match the visuals
+        // We use an elliptical hit box (radius * 0.8) to match the squashed 3D visual
         if (distance < pit.radius * 0.8) {
             car.inDeepSand = true;
             currentMaxSpeed = car.maxSpeed * 0.35; // Bog down heavily
@@ -117,21 +109,26 @@ function update() {
     car.x += Math.cos(car.angle) * car.speed;
     car.y += Math.sin(car.angle) * car.speed;
 
+    // Keep car from driving off the left/right edges of the screen
     if (car.x < 20) car.x = 20;
     if (car.x > canvas.width - 20) car.x = canvas.width - 20;
 
     // --- PHASE LOGIC & GRAVITY ---
     if (currentPhase === "CLIMBING") {
-        car.y += 1.5; 
+        car.y += 1.5; // Gravity pulls DOWN the screen
+        
+        // Did we reach the peak (Y = 0)?
         if (car.y <= 0) {
             currentPhase = "DESCENDING";
             car.y = 0;
-            car.angle = Math.PI / 2; 
+            car.angle = Math.PI / 2; // Spin South
             car.speed = 0; 
         }
     } 
     else if (currentPhase === "DESCENDING") {
-        car.y += 2.5; 
+        car.y += 2.5; // Gravity pushes DOWN the screen
+        
+        // Did we reach the base finish line (Y = 4000)?
         if (car.y >= WORLD_HEIGHT) {
             currentPhase = "FINISHED";
             car.speed = 0;
@@ -140,6 +137,7 @@ function update() {
 
     // --- CAMERA ---
     cameraY = car.y - (canvas.height / 2);
+    // Stop the camera from showing empty black space past the world edges
     if (cameraY < -50) cameraY = -50;
     if (cameraY > WORLD_HEIGHT - canvas.height + 50) cameraY = WORLD_HEIGHT - canvas.height + 50;
 }
@@ -148,79 +146,71 @@ function update() {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Everything inside this save/restore block scrolls with the camera
     ctx.save();
     ctx.translate(0, -cameraY); 
 
-    // 1. Draw Base Gradient
-    let duneGradient = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT);
-    if (currentPhase === "CLIMBING") {
-        duneGradient.addColorStop(0, "#fcecae"); 
-        duneGradient.addColorStop(1, "#c49a45"); 
+    // 1. Draw the repeating Photographic Sand Texture
+    if (sandTexture.complete && sandTexture.naturalWidth !== 0) {
+        let pattern = ctx.createPattern(sandTexture, 'repeat');
+        ctx.fillStyle = pattern;
+        ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
     } else {
-        duneGradient.addColorStop(0, "#e3bc66"); 
-        duneGradient.addColorStop(1, "#9e772d"); 
+        // Fallback color while image loads
+        ctx.fillStyle = "#e3c16f";
+        ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
     }
-    ctx.fillStyle = duneGradient;
+
+    // 2. Add Global Lighting (The Hill Illusion overlay)
+    let lightingGradient = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT);
+    if (currentPhase === "CLIMBING") {
+        lightingGradient.addColorStop(0, "rgba(255, 255, 255, 0.15)"); // Bright peak
+        lightingGradient.addColorStop(1, "rgba(0, 0, 0, 0.65)");       // Dark base
+    } else {
+        lightingGradient.addColorStop(0, "rgba(0, 0, 0, 0.2)");  // Shadowed peak
+        lightingGradient.addColorStop(1, "rgba(0, 0, 0, 0.85)"); // Very dark base
+    }
+    ctx.fillStyle = lightingGradient;
     ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
 
-    // 2. Draw Wind Ripples (Fake 3D Contours)
-    ctx.lineWidth = 2;
-    for (let ripple of sandRipples) {
-        ctx.beginPath();
-        ctx.moveTo(ripple.x, ripple.y);
-        // Create a sweeping Bezier curve
-        ctx.quadraticCurveTo(ripple.x + ripple.width/2, ripple.y + ripple.curveOffset, ripple.x + ripple.width, ripple.y);
-        
-        // Highlight side of the ripple
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-        ctx.stroke();
-        
-        // Shadow side of the ripple (offset slightly down)
-        ctx.beginPath();
-        ctx.moveTo(ripple.x, ripple.y + 2);
-        ctx.quadraticCurveTo(ripple.x + ripple.width/2, ripple.y + ripple.curveOffset + 2, ripple.x + ripple.width, ripple.y + 2);
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.05)";
-        ctx.stroke();
-    }
-
-    // 3. Draw Deep Sand (Isometric Craters)
+    // 3. Draw Deep Sand (Blended Isometric Craters)
     for (let pit of deepSandPits) {
         ctx.save();
         ctx.translate(pit.x, pit.y);
         ctx.scale(1, 0.6); // Squash the Y-axis to make it isometric!
         
-        // Create a radial gradient that acts like a bowl
+        // Blend mode: burns the shadow into the photo beneath it
+        ctx.globalCompositeOperation = "multiply"; 
+        
         let craterGradient = ctx.createRadialGradient(0, 0, pit.radius * 0.2, 0, 0, pit.radius);
-        craterGradient.addColorStop(0, "rgba(100, 70, 20, 0.4)"); // Dark deep center
-        craterGradient.addColorStop(0.8, "rgba(100, 70, 20, 0.1)"); // Sloped edges
-        craterGradient.addColorStop(1, "rgba(100, 70, 20, 0)"); // Fades cleanly into surrounding sand
+        craterGradient.addColorStop(0, "rgba(60, 40, 10, 0.7)");   // Dark center
+        craterGradient.addColorStop(0.8, "rgba(60, 40, 10, 0.2)"); // Sloped edges
+        craterGradient.addColorStop(1, "rgba(60, 40, 10, 0)");     // Fades cleanly
         
         ctx.fillStyle = craterGradient;
         ctx.beginPath();
         ctx.arc(0, 0, pit.radius, 0, Math.PI * 2);
         ctx.fill();
-        ctx.restore();
+        ctx.restore(); // This safely resets the blend mode back to normal!
     }
 
-    // 4. Peak/Base Lines
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    // 4. Draw Peak and Base Finish Lines
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
     ctx.fillRect(0, -4, canvas.width, 8); 
     ctx.fillRect(0, WORLD_HEIGHT - 4, canvas.width, 8); 
 
-    // 5. Draw the Car Sprite (WITH DROP SHADOW)
+    // 5. Draw the Car and its Drop Shadow
     ctx.save();
     ctx.translate(car.x, car.y); 
 
-    // --- NEW: THE CAR DROP SHADOW ---
+    // The Drop Shadow
     ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
     ctx.beginPath();
-    // Draw an isometric squashed circle directly under the car
-    // Offset Y slightly based on phase so shadow matches the light source
     let shadowOffsetY = currentPhase === "CLIMBING" ? 15 : -5;
     ctx.ellipse(0, shadowOffsetY, car.width / 2.5, car.height / 3, 0, 0, Math.PI * 2);
     ctx.fill();
-    // --------------------------------
 
+    // The Figma Sprite
     let frameIndex = getSpriteIndex(car.angle);
     let sourceCol = frameIndex % 4; 
     let sourceRow = Math.floor(frameIndex / 4); 
@@ -232,23 +222,37 @@ function draw() {
     );
     ctx.restore();
     
+    // --- CAMERA MAGIC ENDS ---
     ctx.restore(); 
 
-    // --- UI DRAWING ---
-    ctx.fillStyle = "black";
+    // --- UI DRAWING (Glued to screen) ---
+    ctx.fillStyle = "white"; // Changed to white so it pops against the photo
     ctx.font = "bold 20px Arial";
+    // Add a tiny text shadow for readability
+    ctx.shadowColor = "black";
+    ctx.shadowBlur = 4;
+    
     ctx.fillText("PHASE: " + currentPhase, 20, 40);
     ctx.fillText("SPEED: " + Math.round(car.speed * 10), 20, 70);
     
     if (car.inDeepSand) {
-        ctx.fillStyle = "#8a241a";
+        ctx.fillStyle = "#ff6b6b";
         ctx.fillText("BOGGED DOWN!", 20, 100);
     }
+
+    // Reset shadow so it doesn't mess with the Win Screen
+    ctx.shadowBlur = 0; 
 
     if (currentPhase === "FINISHED") {
         ctx.fillStyle = "white";
         ctx.font = "bold 50px Arial";
         ctx.textAlign = "center";
+        
+        // Semi-transparent background for the win screen
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = "white";
         ctx.fillText("YOU SURVIVED!", canvas.width / 2, canvas.height / 2);
     }
 }
