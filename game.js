@@ -33,24 +33,27 @@ const WORLD_HEIGHT = 4000;
 let currentPhase = "CLIMBING"; 
 let cameraY = 0; 
 
-// Game Entities
 let bogBlobs = []; 
 let rocks = [];
 let spectators = [];
 let surfers = [];
 
-// --- 2.5 TIMER & LEADERBOARD SETUP ---
+// --- 2.5 TIMER, LEADERBOARD, & NAME ENTRY SETUP ---
 let startTime = Date.now();
 let finalTime = 0;
 let leaderboard = [];
 
-// Try to load saved times from the browser
+// New Name Entry Variables
+let isEnteringName = false;
+let playerName = [65, 65, 65]; // ASCII codes for [A, A, A]
+let nameIndex = 0; // Which letter are we currently changing? (0, 1, or 2)
+
+// Load saved times (Using V2 key to avoid crashes with old data)
 try {
-    let saved = localStorage.getItem("duneLeaderboard");
+    let saved = localStorage.getItem("duneLeaderboardV2");
     if (saved) leaderboard = JSON.parse(saved);
 } catch(e) { console.log("Could not load leaderboard"); }
 
-// Helper function to format milliseconds into MM:SS:ms
 function formatTime(ms) {
     let totalSeconds = Math.floor(ms / 1000);
     let minutes = Math.floor(totalSeconds / 60);
@@ -59,13 +62,12 @@ function formatTime(ms) {
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(2, '0')}`;
 }
 
-// Helper to save top 5 times
-function saveTime(time) {
-    leaderboard.push(time);
-    leaderboard.sort((a, b) => a - b); // Sort fastest to slowest
+function saveScore(name, time) {
+    leaderboard.push({ name: name, time: time });
+    leaderboard.sort((a, b) => a.time - b.time); // Sort fastest to slowest
     leaderboard = leaderboard.slice(0, 5); // Keep only top 5
     try {
-        localStorage.setItem("duneLeaderboard", JSON.stringify(leaderboard));
+        localStorage.setItem("duneLeaderboardV2", JSON.stringify(leaderboard));
     } catch(e) {}
 }
 
@@ -130,14 +132,34 @@ function generateEnvironment(phase) {
 }
 generateEnvironment("CLIMBING");
 
-// --- 4. KEYBOARD CONTROLS & RESTART LOGIC ---
+// --- 4. KEYBOARD CONTROLS ---
 const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
 
 window.addEventListener("keydown", function(e) {
+    // --- ARCADE NAME ENTRY LOGIC ---
+    if (isEnteringName) {
+        if (e.code === "ArrowUp") {
+            playerName[nameIndex] = playerName[nameIndex] >= 90 ? 65 : playerName[nameIndex] + 1;
+        } else if (e.code === "ArrowDown") {
+            playerName[nameIndex] = playerName[nameIndex] <= 65 ? 90 : playerName[nameIndex] - 1;
+        } else if (e.code === "ArrowRight") {
+            if (nameIndex < 2) nameIndex++;
+        } else if (e.code === "ArrowLeft") {
+            if (nameIndex > 0) nameIndex--;
+        } else if (e.code === "Enter") {
+            // Combine ASCII codes into a string and save!
+            let finalName = String.fromCharCode(playerName[0], playerName[1], playerName[2]);
+            saveScore(finalName, finalTime);
+            isEnteringName = false; // Move to the leaderboard view
+        }
+        return; // Prevent standard car/game inputs while typing
+    }
+
+    // --- STANDARD GAME LOGIC ---
     if (keys.hasOwnProperty(e.code)) { keys[e.code] = true; e.preventDefault(); }
     
-    // RESTART BUTTON LOGIC
-    if (e.code === "KeyR" && currentPhase === "FINISHED") {
+    // RESTART LOGIC (Only works when NOT entering a name)
+    if (e.code === "KeyR" && currentPhase === "FINISHED" && !isEnteringName) {
         resetGame();
     }
 });
@@ -152,7 +174,7 @@ function resetGame() {
     car.y = WORLD_HEIGHT - 100;
     car.speed = 0;
     car.angle = -Math.PI / 2;
-    startTime = Date.now(); // Reset the clock!
+    startTime = Date.now(); 
     generateEnvironment("CLIMBING");
 }
 
@@ -171,7 +193,6 @@ function update() {
     let currentMaxSpeed = car.maxSpeed;
     let currentFriction = car.friction;
 
-    // Collisions...
     for (let blob of bogBlobs) {
         let dx = car.x - blob.x;
         let dy = car.y - blob.y;
@@ -257,7 +278,7 @@ function update() {
     if (car.x < 20) car.x = 20;
     if (car.x > canvas.width - 20) car.x = canvas.width - 20;
 
-    // --- PHASE TRANSITIONS & TIMER STOPS ---
+    // --- PHASE TRANSITIONS ---
     if (currentPhase === "CLIMBING") {
         if (car.y <= 0) {
             currentPhase = "DESCENDING";
@@ -272,9 +293,11 @@ function update() {
             currentPhase = "FINISHED";
             car.speed = 0;
             
-            // STOP THE CLOCK AND SAVE IT!
+            // Trigger Name Entry!
             finalTime = Date.now() - startTime;
-            saveTime(finalTime);
+            isEnteringName = true;
+            playerName = [65, 65, 65]; // Reset to AAA
+            nameIndex = 0;
         }
     }
 
@@ -382,9 +405,7 @@ function draw() {
     ctx.shadowColor = "black";
     ctx.shadowBlur = 4;
     
-    // Live Timer Calculation
     let displayTime = currentPhase === "FINISHED" ? finalTime : Date.now() - startTime;
-    
     ctx.fillText("PHASE: " + currentPhase, 20, 40);
     ctx.fillText("TIME: " + formatTime(displayTime), 20, 70);
     ctx.fillText("SPEED: " + Math.round(car.speed * 10), 20, 100);
@@ -402,37 +423,66 @@ function draw() {
 
     ctx.shadowBlur = 0; 
 
-    // --- WIN SCREEN & LEADERBOARD ---
+    // --- GAME OVER OVERLAY ---
     if (currentPhase === "FINISHED") {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        ctx.fillStyle = "white";
         ctx.textAlign = "center";
         
-        ctx.font = "bold 50px Arial";
-        ctx.fillText("YOU SURVIVED!", canvas.width / 2, canvas.height / 2 - 120);
-        
-        ctx.fillStyle = "#ffcc00"; // Gold color for your time
-        ctx.font = "bold 35px Arial";
-        ctx.fillText("YOUR TIME: " + formatTime(finalTime), canvas.width / 2, canvas.height / 2 - 60);
+        if (isEnteringName) {
+            // THE NEW NAME ENTRY SCREEN
+            ctx.fillStyle = "white";
+            ctx.font = "bold 40px Arial";
+            ctx.fillText("NEW HIGH SCORE!", canvas.width / 2, canvas.height / 2 - 100);
+            
+            ctx.fillStyle = "#ffcc00"; 
+            ctx.font = "bold 25px Arial";
+            ctx.fillText("YOUR TIME: " + formatTime(finalTime), canvas.width / 2, canvas.height / 2 - 40);
 
-        ctx.fillStyle = "white";
-        ctx.font = "bold 25px Arial";
-        ctx.fillText("--- TOP TIMES ---", canvas.width / 2, canvas.height / 2);
-        
-        // Loop through the saved leaderboard array
-        ctx.font = "bold 20px Arial";
-        for (let i = 0; i < leaderboard.length; i++) {
-            ctx.fillText(`${i + 1}. ${formatTime(leaderboard[i])}`, canvas.width / 2, canvas.height / 2 + 35 + (i * 30));
+            // Draw the 3 letters
+            ctx.font = "bold 60px monospace";
+            for (let i = 0; i < 3; i++) {
+                // Highlight the active letter in yellow, others in white
+                ctx.fillStyle = (i === nameIndex) ? "#ffcc00" : "white";
+                let letter = String.fromCharCode(playerName[i]);
+                // Space them out slightly
+                let letterX = (canvas.width / 2) - 60 + (i * 60);
+                ctx.fillText(letter, letterX, canvas.height / 2 + 50);
+                
+                // Draw a little cursor triangle under the active letter
+                if (i === nameIndex) {
+                    let pulse = Math.abs(Math.sin(Date.now() / 200)) * 10;
+                    ctx.fillText("ˆ", letterX, canvas.height / 2 + 80 + pulse);
+                }
+            }
+            
+            ctx.fillStyle = "white";
+            ctx.font = "bold 18px Arial";
+            ctx.fillText("USE ARROWS TO EDIT. PRESS ENTER TO SAVE.", canvas.width / 2, canvas.height / 2 + 150);
+
+        } else {
+            // THE LEADERBOARD SCREEN
+            ctx.fillStyle = "white";
+            ctx.font = "bold 50px Arial";
+            ctx.fillText("LEADERBOARD", canvas.width / 2, canvas.height / 2 - 120);
+            
+            ctx.font = "bold 25px monospace";
+            for (let i = 0; i < leaderboard.length; i++) {
+                // Highlight your newly entered score in Gold!
+                ctx.fillStyle = (leaderboard[i].time === finalTime) ? "#ffcc00" : "white";
+                let rank = (i + 1).toString().padEnd(3, ' ');
+                let name = leaderboard[i].name;
+                let time = formatTime(leaderboard[i].time);
+                ctx.fillText(`${rank} ${name} ..... ${time}`, canvas.width / 2, canvas.height / 2 - 40 + (i * 40));
+            }
+
+            ctx.fillStyle = "#8cff6b"; 
+            ctx.font = "bold 24px Arial";
+            let alpha = Math.abs(Math.sin(Date.now() / 300));
+            ctx.fillStyle = `rgba(140, 255, 107, ${alpha + 0.2})`;
+            ctx.fillText("PRESS 'R' TO RESTART", canvas.width / 2, canvas.height / 2 + 200);
         }
-
-        ctx.fillStyle = "#8cff6b"; // Green restart prompt
-        ctx.font = "bold 24px Arial";
-        // Make the text pulse slowly!
-        let alpha = Math.abs(Math.sin(Date.now() / 300));
-        ctx.fillStyle = `rgba(140, 255, 107, ${alpha + 0.2})`;
-        ctx.fillText("PRESS 'R' TO RESTART", canvas.width / 2, canvas.height / 2 + 220);
     }
 }
 
