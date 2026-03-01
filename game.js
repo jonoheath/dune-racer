@@ -33,37 +33,42 @@ const WORLD_HEIGHT = 4000;
 let currentPhase = "CLIMBING"; 
 let cameraY = 0; 
 
-let duneRidges = []; 
+// Array to hold our dodgeable friction blobs
+let bogBlobs = []; 
 
-// --- 3. THE PLAYER'S CAR (UPDATED FOR MOMENTUM) ---
+// --- 3. THE PLAYER'S CAR ---
 let car = {
     x: canvas.width / 2,     
     y: WORLD_HEIGHT - 100,   
     speed: 0,
-    maxSpeed: 6.5,           // Increased so you can hit 65!
-    acceleration: 0.15,      // Slightly punchier to build speed on the flats
-    friction: 0.04,          // Slightly lower base friction to coast better
+    maxSpeed: 6.5,           
+    acceleration: 0.16,      
+    friction: 0.04,          
     angle: -Math.PI / 2,     
     turnSpeed: 0.05,         
     width: frameWidth * drawScale,
     height: frameHeight * drawScale,
-    onRidge: false,
-    ridgeMessage: ""         // To give the player dynamic UI feedback
+    inBog: false,
+    uiMessage: ""         
 };
 
-// --- 3.5 GENERATE ENVIRONMENT ---
-function generateEnvironment() {
-    for (let y = 200; y < WORLD_HEIGHT - 200; y += 350) {
-        duneRidges.push({
-            baseY: y, 
-            amplitude: Math.random() * 80 + 50,    
-            frequency: (Math.random() * 0.006) + 0.002, 
-            slope: (Math.random() * 0.4) - 0.2,    
-            thickness: Math.random() * 30 + 40     
+// --- 3.5 GENERATE ENVIRONMENT (DYNAMIC BASED ON PHASE) ---
+function generateEnvironment(phase) {
+    bogBlobs = []; // Clear old blobs
+    
+    // 40 blobs going up, 90 blobs going down!
+    let numBlobs = phase === "CLIMBING" ? 40 : 90; 
+    
+    for (let i = 0; i < numBlobs; i++) {
+        bogBlobs.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * (WORLD_HEIGHT - 400) + 200, 
+            radius: Math.random() * 50 + 30 
         });
     }
 }
-generateEnvironment();
+// Generate the initial climbing map!
+generateEnvironment("CLIMBING");
 
 // --- 4. KEYBOARD CONTROLS ---
 const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
@@ -85,40 +90,44 @@ function getSpriteIndex(angle) {
 function update() {
     if (currentPhase === "FINISHED") return; 
 
-    car.onRidge = false; 
-    car.ridgeMessage = "";
+    car.inBog = false; 
+    car.uiMessage = "";
     let currentMaxSpeed = car.maxSpeed;
     let currentFriction = car.friction;
 
-    // --- SINE WAVE MOMENTUM COLLISION ---
-    for (let ridge of duneRidges) {
-        let ridgeY_at_carX = ridge.baseY + Math.sin(car.x * ridge.frequency) * ridge.amplitude + (car.x * ridge.slope);
-
-        if (Math.abs(car.y - ridgeY_at_carX) < ridge.thickness) {
-            car.onRidge = true;
-            let absoluteSpeed = Math.abs(car.speed); // Track how fast they hit the dune
+    // --- 1. DODGEABLE BOG BLOB COLLISION ---
+    for (let blob of bogBlobs) {
+        let dx = car.x - blob.x;
+        let dy = car.y - blob.y;
+        if (Math.sqrt(dx*dx + dy*dy) < blob.radius * 0.8) {
+            car.inBog = true;
+            let absoluteSpeed = Math.abs(car.speed);
             
+            // Momentum check!
             if (absoluteSpeed >= 5.5) {
-                // Tier 1: 55+ Speed. Carries momentum over easily.
-                car.ridgeMessage = "CARRYING SPEED!";
-                // Friction is higher than acceleration, so speed bleeds slowly
-                currentFriction = car.friction * 4.5; 
+                car.uiMessage = "PLOWING THROUGH!";
+                currentFriction = car.friction * 3; 
             } 
-            else if (absoluteSpeed >= 4.5) {
-                // Tier 2: 45-54 Speed. Tougher grind.
-                car.ridgeMessage = "LOSING MOMENTUM...";
-                currentFriction = car.friction * 8; // Speed bleeds much faster
+            else if (absoluteSpeed >= 4.0) {
+                car.uiMessage = "LOSING MOMENTUM...";
+                currentFriction = car.friction * 6;
             } 
             else {
-                // Tier 3: Under 45 Speed. Bogged down!
-                car.ridgeMessage = "BOGGED DOWN!";
-                currentMaxSpeed = 2.0; // Hard cap the speed if they fail the climb
-                currentFriction = car.friction * 15; // Dead stop almost immediately
+                car.uiMessage = "BOGGED DOWN!";
+                currentMaxSpeed = 2.0; 
+                currentFriction = car.friction * 12; 
             }
         }
     }
 
-    // Driving Math
+    // --- 2. THE HILL PHYSICS (GRAVITY) ---
+    // If you point straight up (-Y), gravity pulls your speed down by 0.08 per frame.
+    // If you steer sideways, the sine math lowers the gravity penalty so you can accelerate!
+    // Going downhill (+Y), gravity pushes you forward!
+    let gravityForce = currentPhase === "CLIMBING" ? 0.08 : 0.05;
+    car.speed += Math.sin(car.angle) * gravityForce;
+
+    // --- 3. ENGINE & BRAKING ---
     if (keys.ArrowUp) car.speed += car.acceleration;
     else if (keys.ArrowDown) car.speed -= car.acceleration;
     else {
@@ -127,40 +136,40 @@ function update() {
         if (Math.abs(car.speed) < currentFriction) car.speed = 0;
     }
 
-    // Apply speed caps. If they are over the cap (like hitting a bog), 
-    // let friction naturally pull them down rather than snapping instantly.
-    if (car.speed > currentMaxSpeed && !car.onRidge) car.speed = currentMaxSpeed;
-    if (car.onRidge && car.speed > currentMaxSpeed) {
-        // If they bog down, snap it to max speed so they feel the penalty
+    // Apply caps
+    if (car.speed > currentMaxSpeed && !car.inBog) car.speed = currentMaxSpeed;
+    if (car.inBog && car.speed > currentMaxSpeed) {
         if (currentMaxSpeed === 2.0) car.speed = 2.0; 
     }
-    
     if (car.speed < -currentMaxSpeed / 2) car.speed = -currentMaxSpeed / 2;
 
+    // --- 4. STEERING ---
     if (Math.abs(car.speed) > 0.5) {
         let steerDirection = car.speed > 0 ? 1 : -1; 
         if (keys.ArrowLeft) car.angle -= car.turnSpeed * steerDirection;
         if (keys.ArrowRight) car.angle += car.turnSpeed * steerDirection;
     }
 
+    // Move the car
     car.x += Math.cos(car.angle) * car.speed;
     car.y += Math.sin(car.angle) * car.speed;
 
     if (car.x < 20) car.x = 20;
     if (car.x > canvas.width - 20) car.x = canvas.width - 20;
 
-    // Phase Logic
+    // --- 5. PHASE LOGIC ---
     if (currentPhase === "CLIMBING") {
-        car.y += 1.5; 
         if (car.y <= 0) {
             currentPhase = "DESCENDING";
             car.y = 0;
             car.angle = Math.PI / 2; 
             car.speed = 0; 
+            
+            // REGENERATE THE MAP WITH 90 BLOBS FOR THE DESCENT!
+            generateEnvironment("DESCENDING"); 
         }
     } 
     else if (currentPhase === "DESCENDING") {
-        car.y += 2.5; 
         if (car.y >= WORLD_HEIGHT) {
             currentPhase = "FINISHED";
             car.speed = 0;
@@ -190,30 +199,26 @@ function draw() {
     ctx.fillStyle = pattern;
     ctx.fillRect(0, -100, canvas.width, WORLD_HEIGHT + 200);
 
-    // 2. DRAW THE PROCEDURAL SINE WAVE RIDGES
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    for (let ridge of duneRidges) {
-        ctx.beginPath();
-        for (let x = -50; x < canvas.width + 50; x += 20) {
-            let y = ridge.baseY + Math.sin(x * ridge.frequency) * ridge.amplitude + (x * ridge.slope);
-            if (x === -50) ctx.moveTo(x, y + 10); 
-            else ctx.lineTo(x, y + 10);
+    // 2. Draw Chunky Pixel Bog Blobs
+    ctx.fillStyle = "rgba(100, 70, 30, 0.6)"; 
+    const chunkSize = 12; 
+    
+    for (let blob of bogBlobs) {
+        ctx.save();
+        ctx.translate(blob.x, blob.y);
+        ctx.globalCompositeOperation = "multiply"; 
+        
+        let wChunks = Math.floor(blob.radius / chunkSize);
+        let hChunks = Math.floor((blob.radius * 0.8) / chunkSize); 
+        
+        for (let x = -wChunks; x <= wChunks; x++) {
+            for (let y = -hChunks; y <= hChunks; y++) {
+                if ((x * x) / (wChunks * wChunks) + (y * y) / (hChunks * hChunks) <= 1) {
+                    ctx.fillRect(x * chunkSize, y * chunkSize, chunkSize, chunkSize);
+                }
+            }
         }
-        ctx.strokeStyle = "rgba(100, 60, 20, 0.4)"; 
-        ctx.lineWidth = ridge.thickness * 1.8;      
-        ctx.stroke();
-
-        ctx.beginPath();
-        for (let x = -50; x < canvas.width + 50; x += 20) {
-            let y = ridge.baseY + Math.sin(x * ridge.frequency) * ridge.amplitude + (x * ridge.slope);
-            if (x === -50) ctx.moveTo(x, y - 5); 
-            else ctx.lineTo(x, y - 5);
-        }
-        ctx.strokeStyle = "rgba(255, 230, 160, 0.6)"; 
-        ctx.lineWidth = ridge.thickness;
-        ctx.stroke();
+        ctx.restore();
     }
 
     // 3. Global Lighting Gradient
@@ -259,13 +264,12 @@ function draw() {
     ctx.fillText("PHASE: " + currentPhase, 20, 40);
     ctx.fillText("SPEED: " + Math.round(car.speed * 10), 20, 70);
     
-    if (car.onRidge) {
-        // Change text color based on how well they are doing!
-        if (car.ridgeMessage === "BOGGED DOWN!") ctx.fillStyle = "#ff6b6b"; // Red
-        else if (car.ridgeMessage === "LOSING MOMENTUM...") ctx.fillStyle = "#ffc86b"; // Orange
-        else ctx.fillStyle = "#8cff6b"; // Green for carrying speed
+    if (car.inBog) {
+        if (car.uiMessage === "BOGGED DOWN!") ctx.fillStyle = "#ff6b6b"; 
+        else if (car.uiMessage === "LOSING MOMENTUM...") ctx.fillStyle = "#ffc86b"; 
+        else ctx.fillStyle = "#8cff6b"; 
 
-        ctx.fillText(car.ridgeMessage, 20, 100);
+        ctx.fillText(car.uiMessage, 20, 100);
     }
 
     ctx.shadowBlur = 0; 
